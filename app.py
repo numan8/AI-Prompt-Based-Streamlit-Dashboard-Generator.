@@ -11,14 +11,8 @@ st.set_page_config(
 )
 
 CUSTOM_COLORS = [
-    "#2563EB",
-    "#7C3AED",
-    "#EC4899",
-    "#F59E0B",
-    "#10B981",
-    "#06B6D4",
-    "#EF4444",
-    "#84CC16"
+    "#2563EB", "#7C3AED", "#EC4899", "#F59E0B",
+    "#10B981", "#06B6D4", "#EF4444", "#84CC16"
 ]
 
 KPI_COLORS = [
@@ -34,31 +28,29 @@ st.markdown("""
     background: linear-gradient(135deg, #EEF2FF 0%, #FDF2F8 50%, #ECFEFF 100%);
 }
 .block-container {
-    padding-top: 0.4rem;
+    padding-top: 0.3rem;
     padding-bottom: 0.2rem;
-    padding-left: 1rem;
-    padding-right: 1rem;
+    padding-left: 0.8rem;
+    padding-right: 0.8rem;
 }
 .main-title {
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 900;
     color: #111827;
-    margin-bottom: 0px;
 }
 .sub-title {
-    font-size: 12px;
+    font-size: 11px;
     color: #4B5563;
-    margin-bottom: 2px;
 }
 .metric-card {
     color: white;
-    padding: 8px;
+    padding: 7px;
     border-radius: 13px;
     text-align: center;
     box-shadow: 0px 4px 14px rgba(0,0,0,0.18);
 }
 .metric-card h2 {
-    font-size: 19px;
+    font-size: 18px;
     margin: 0;
 }
 .metric-card p {
@@ -67,23 +59,23 @@ st.markdown("""
 }
 .insight-box {
     background: white;
-    padding: 9px;
+    padding: 8px;
     border-radius: 12px;
     border-left: 5px solid #7C3AED;
     font-size: 11px;
     box-shadow: 0px 3px 12px rgba(0,0,0,0.10);
 }
 h1, h2, h3 {
-    font-size: 15px !important;
+    font-size: 14px !important;
     margin-top: 0.1rem !important;
     margin-bottom: 0.2rem !important;
 }
 .stTextArea textarea {
-    min-height: 60px !important;
+    min-height: 55px !important;
     border-radius: 12px;
 }
 .stButton > button {
-    height: 34px;
+    height: 32px;
     background: linear-gradient(135deg, #2563EB, #EC4899);
     color: white;
     border-radius: 10px;
@@ -91,10 +83,10 @@ h1, h2, h3 {
     border: none;
 }
 [data-testid="stVerticalBlock"] {
-    gap: 0.25rem;
+    gap: 0.22rem;
 }
 [data-testid="stHorizontalBlock"] {
-    gap: 0.5rem;
+    gap: 0.45rem;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -104,7 +96,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 st.markdown(
-    '<div class="sub-title">Upload data, write one prompt, and generate a colorful AI dashboard.</div>',
+    '<div class="sub-title">Upload data, write one prompt, and generate map, KPIs, charts, and insights.</div>',
     unsafe_allow_html=True
 )
 
@@ -145,20 +137,20 @@ df.columns = [str(col).strip() for col in df.columns]
 
 numeric_cols = df.select_dtypes(include="number").columns.tolist()
 categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
-date_cols = []
 
+date_cols = []
 for col in df.columns:
     try:
         temp = pd.to_datetime(df[col], errors="coerce")
         if temp.notna().sum() > len(df) * 0.5:
             date_cols.append(col)
-    except:
+    except Exception:
         pass
 
 user_prompt = st.text_area(
     "💬 Dashboard Prompt",
-    placeholder="Example: Create a colorful CEO dashboard with KPIs, trends, regional analysis, product performance, and recommendations.",
-    height=60
+    placeholder="Create a Pakistan sales dashboard with map, province analysis, city sales, product performance, profit, customer segments, and recommendations.",
+    height=55
 )
 
 generate = st.button("🚀 Generate Dashboard", use_container_width=True)
@@ -210,25 +202,23 @@ JSON format:
       "aggregation": "sum | mean | count | none"
     }}
   ],
-  "map": {{
-    "create_map": true or false,
-    "lat": "latitude column or null",
-    "lon": "longitude column or null",
-    "size": "numeric column or null",
-    "color": "column or null",
-    "title": "map title"
-  }},
-  "interpretation": "very short dashboard interpretation and recommendation"
+  "interpretation": "very short executive interpretation and recommendation"
 }}
 
 Rules:
 - Use only dataset columns.
 - Create exactly 4 KPI cards.
-- Create exactly 4 colorful charts.
-- Use categorical columns for color where possible.
-- Keep dashboard suitable for one screen.
-- Use map only if latitude and longitude exist.
-- Interpretation must be short.
+- Create exactly 6 colorful charts.
+- If Province exists, include province analysis.
+- If City exists, include city analysis.
+- If Product exists, include product analysis.
+- If Category exists, include category analysis.
+- If Customer_Segment exists, include customer segment analysis.
+- If Sales_Channel exists, include sales channel analysis.
+- If Profit exists, include profitability analysis.
+- If Target_Achievement_Percent exists, include target achievement analysis.
+- If Net_Sales exists, prioritize it for sales analysis.
+- Keep interpretation short.
 - Do not include markdown.
 """
 
@@ -257,14 +247,25 @@ except Exception as e:
     st.stop()
 
 
+def find_col(possible_names):
+    lower_cols = {c.lower(): c for c in df.columns}
+    for name in possible_names:
+        if name.lower() in lower_cols:
+            return lower_cols[name.lower()]
+    return None
+
+
 def aggregate_data(data, x, y, aggregation):
     if aggregation == "none" or y is None:
         return data
 
-    if aggregation == "sum":
+    if x not in data.columns:
+        return data
+
+    if aggregation == "sum" and y in data.columns:
         return data.groupby(x, as_index=False)[y].sum()
 
-    if aggregation == "mean":
+    if aggregation == "mean" and y in data.columns:
         return data.groupby(x, as_index=False)[y].mean()
 
     if aggregation == "count":
@@ -299,21 +300,87 @@ def format_number(value):
             return f"{value / 1_000:.1f}K"
         else:
             return f"{value:,.0f}"
-    except:
+    except Exception:
         return str(value)
 
 
-st.subheader(plan.get("dashboard_title", "AI Dashboard"))
+def create_default_charts():
+    charts = []
 
+    net_sales = find_col(["Net_Sales", "Sales", "Revenue", "Amount"])
+    profit = find_col(["Profit", "Net_Profit"])
+    province = find_col(["Province", "State", "Region"])
+    city = find_col(["City", "Location"])
+    product = find_col(["Product", "Item"])
+    category = find_col(["Category", "Product_Category"])
+    segment = find_col(["Customer_Segment", "Segment"])
+    channel = find_col(["Sales_Channel", "Channel"])
+    target = find_col(["Target_Achievement_Percent", "Target_Achievement"])
+
+    if province and net_sales:
+        charts.append({"title": "Sales by Province", "type": "bar", "x": province, "y": net_sales, "color": province, "aggregation": "sum"})
+
+    if city and net_sales:
+        charts.append({"title": "Sales by City", "type": "bar", "x": city, "y": net_sales, "color": city, "aggregation": "sum"})
+
+    if product and profit:
+        charts.append({"title": "Profit by Product", "type": "bar", "x": product, "y": profit, "color": product, "aggregation": "sum"})
+
+    if category and net_sales:
+        charts.append({"title": "Sales by Category", "type": "pie", "x": category, "y": net_sales, "color": category, "aggregation": "sum"})
+
+    if segment and net_sales:
+        charts.append({"title": "Sales by Customer Segment", "type": "bar", "x": segment, "y": net_sales, "color": segment, "aggregation": "sum"})
+
+    if channel and net_sales:
+        charts.append({"title": "Sales by Channel", "type": "pie", "x": channel, "y": net_sales, "color": channel, "aggregation": "sum"})
+
+    if target and province:
+        charts.append({"title": "Target Achievement by Province", "type": "bar", "x": province, "y": target, "color": province, "aggregation": "mean"})
+
+    return charts[:6]
+
+
+def style_fig(fig, height=190):
+    fig.update_layout(
+        template="plotly_white",
+        height=height,
+        title_font_size=12,
+        title_x=0.03,
+        margin=dict(l=8, r=8, t=32, b=8),
+        font=dict(size=8),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=7)
+        )
+    )
+    fig.update_xaxes(showgrid=False, tickfont=dict(size=7))
+    fig.update_yaxes(gridcolor="#E5E7EB", tickfont=dict(size=7))
+    return fig
+
+
+st.subheader(plan.get("dashboard_title", "AI Sales Dashboard"))
+
+# KPI cards
 kpis = plan.get("kpis", [])[:4]
 
 if len(kpis) < 4:
-    for col in numeric_cols[:4 - len(kpis)]:
-        kpis.append({
-            "title": col,
-            "column": col,
-            "aggregation": "sum"
-        })
+    fallback_kpis = [
+        (find_col(["Net_Sales", "Sales", "Revenue", "Amount"]), "Total Sales", "sum"),
+        (find_col(["Profit", "Net_Profit"]), "Total Profit", "sum"),
+        (find_col(["Quantity", "Units"]), "Total Quantity", "sum"),
+        (find_col(["Target_Achievement_Percent"]), "Avg Target Achievement", "mean"),
+    ]
+
+    for col, title, agg in fallback_kpis:
+        if col and len(kpis) < 4:
+            kpis.append({"title": title, "column": col, "aggregation": agg})
 
 kpi_cols = st.columns(4)
 
@@ -331,12 +398,56 @@ for i, kpi in enumerate(kpis[:4]):
         </div>
         """, unsafe_allow_html=True)
 
-charts = plan.get("charts", [])[:4]
+# Automatic map if coordinates exist
+lat_col = find_col(["Latitude", "Lat", "latitude", "lat"])
+lon_col = find_col(["Longitude", "Lon", "Lng", "longitude", "lon", "lng"])
+sales_col = find_col(["Net_Sales", "Sales", "Revenue", "Amount"])
+city_col = find_col(["City", "Location"])
+province_col = find_col(["Province", "State", "Region"])
 
-for i in range(0, 4, 2):
-    cols = st.columns(2)
+if lat_col and lon_col:
+    try:
+        map_hover = [c for c in [city_col, province_col, sales_col, "Profit", "Product", "Category"] if c in df.columns]
 
-    for j in range(2):
+        fig_map = px.scatter_mapbox(
+            df,
+            lat=lat_col,
+            lon=lon_col,
+            size=sales_col if sales_col in df.columns else None,
+            color=sales_col if sales_col in df.columns else province_col,
+            hover_name=city_col if city_col in df.columns else None,
+            hover_data=map_hover,
+            color_continuous_scale="Turbo",
+            zoom=4,
+            height=230,
+            title="Pakistan Sales Map"
+        )
+
+        fig_map.update_layout(
+            mapbox_style="open-street-map",
+            margin=dict(l=0, r=0, t=30, b=0),
+            font=dict(size=8),
+            paper_bgcolor="white"
+        )
+
+        st.plotly_chart(fig_map, use_container_width=True)
+
+    except Exception:
+        pass
+
+# Charts
+charts = plan.get("charts", [])[:6]
+
+if len(charts) < 6:
+    fallback_charts = create_default_charts()
+    for c in fallback_charts:
+        if len(charts) < 6:
+            charts.append(c)
+
+for i in range(0, 6, 3):
+    cols = st.columns(3)
+
+    for j in range(3):
         chart_index = i + j
 
         if chart_index >= len(charts):
@@ -368,24 +479,15 @@ for i in range(0, 4, 2):
         try:
             with cols[j]:
                 if chart_type == "bar":
-                    if aggregation == "count":
-                        fig = px.bar(
-                            chart_df,
-                            x=x,
-                            y="count",
-                            title=title,
-                            color=color if color in chart_df.columns else x,
-                            color_discrete_sequence=CUSTOM_COLORS
-                        )
-                    else:
-                        fig = px.bar(
-                            chart_df,
-                            x=x,
-                            y=y,
-                            title=title,
-                            color=color if color in chart_df.columns else x,
-                            color_discrete_sequence=CUSTOM_COLORS
-                        )
+                    y_col = "count" if aggregation == "count" else y
+                    fig = px.bar(
+                        chart_df,
+                        x=x,
+                        y=y_col,
+                        title=title,
+                        color=color if color in chart_df.columns else x,
+                        color_discrete_sequence=CUSTOM_COLORS
+                    )
 
                 elif chart_type == "line":
                     fig = px.line(
@@ -396,7 +498,7 @@ for i in range(0, 4, 2):
                         color=color if color in chart_df.columns else None,
                         color_discrete_sequence=CUSTOM_COLORS
                     )
-                    fig.update_traces(line=dict(width=3), marker=dict(size=6))
+                    fig.update_traces(line=dict(width=3), marker=dict(size=5))
 
                 elif chart_type == "scatter":
                     fig = px.scatter(
@@ -447,64 +549,11 @@ for i in range(0, 4, 2):
                         color_discrete_sequence=CUSTOM_COLORS
                     )
 
-                fig.update_layout(
-                    template="plotly_white",
-                    height=220,
-                    title_font_size=13,
-                    title_x=0.03,
-                    margin=dict(l=10, r=10, t=35, b=10),
-                    font=dict(size=9),
-                    paper_bgcolor="white",
-                    plot_bgcolor="white",
-                    legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=1.02,
-                        xanchor="right",
-                        x=1
-                    )
-                )
-
-                fig.update_xaxes(showgrid=False)
-                fig.update_yaxes(gridcolor="#E5E7EB")
-
+                fig = style_fig(fig, height=180)
                 st.plotly_chart(fig, use_container_width=True)
 
         except Exception:
             st.warning(f"Could not create chart: {title}")
-
-map_plan = plan.get("map", {})
-
-if map_plan.get("create_map") is True:
-    lat = map_plan.get("lat")
-    lon = map_plan.get("lon")
-    size = map_plan.get("size")
-    color = map_plan.get("color")
-
-    if lat in df.columns and lon in df.columns:
-        try:
-            fig_map = px.scatter_mapbox(
-                df,
-                lat=lat,
-                lon=lon,
-                size=size if size in df.columns else None,
-                color=color if color in df.columns else None,
-                color_discrete_sequence=CUSTOM_COLORS,
-                zoom=3,
-                height=220,
-                title=map_plan.get("title", "Map")
-            )
-
-            fig_map.update_layout(
-                mapbox_style="open-street-map",
-                margin=dict(l=0, r=0, t=35, b=0),
-                font=dict(size=9)
-            )
-
-            st.plotly_chart(fig_map, use_container_width=True)
-
-        except Exception:
-            pass
 
 interpretation = plan.get("interpretation", "")
 
