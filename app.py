@@ -10,9 +10,29 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------- Compact CSS ----------
+CUSTOM_COLORS = [
+    "#2563EB",
+    "#7C3AED",
+    "#EC4899",
+    "#F59E0B",
+    "#10B981",
+    "#06B6D4",
+    "#EF4444",
+    "#84CC16"
+]
+
+KPI_COLORS = [
+    "linear-gradient(135deg, #2563EB, #06B6D4)",
+    "linear-gradient(135deg, #7C3AED, #EC4899)",
+    "linear-gradient(135deg, #F59E0B, #EF4444)",
+    "linear-gradient(135deg, #10B981, #84CC16)"
+]
+
 st.markdown("""
 <style>
+.stApp {
+    background: linear-gradient(135deg, #EEF2FF 0%, #FDF2F8 50%, #ECFEFF 100%);
+}
 .block-container {
     padding-top: 0.4rem;
     padding-bottom: 0.2rem;
@@ -21,24 +41,24 @@ st.markdown("""
 }
 .main-title {
     font-size: 24px;
-    font-weight: 800;
+    font-weight: 900;
     color: #111827;
     margin-bottom: 0px;
 }
 .sub-title {
     font-size: 12px;
-    color: #6B7280;
+    color: #4B5563;
     margin-bottom: 2px;
 }
 .metric-card {
-    background: linear-gradient(135deg, #4F46E5, #7C3AED);
     color: white;
-    padding: 7px;
-    border-radius: 10px;
+    padding: 8px;
+    border-radius: 13px;
     text-align: center;
+    box-shadow: 0px 4px 14px rgba(0,0,0,0.18);
 }
 .metric-card h2 {
-    font-size: 18px;
+    font-size: 19px;
     margin: 0;
 }
 .metric-card p {
@@ -46,11 +66,12 @@ st.markdown("""
     margin: 0;
 }
 .insight-box {
-    background: #EEF2FF;
-    padding: 8px;
-    border-radius: 10px;
-    border-left: 4px solid #4F46E5;
+    background: white;
+    padding: 9px;
+    border-radius: 12px;
+    border-left: 5px solid #7C3AED;
     font-size: 11px;
+    box-shadow: 0px 3px 12px rgba(0,0,0,0.10);
 }
 h1, h2, h3 {
     font-size: 15px !important;
@@ -59,13 +80,15 @@ h1, h2, h3 {
 }
 .stTextArea textarea {
     min-height: 60px !important;
+    border-radius: 12px;
 }
 .stButton > button {
     height: 34px;
-    background-color: #4F46E5;
+    background: linear-gradient(135deg, #2563EB, #EC4899);
     color: white;
     border-radius: 10px;
-    font-weight: 700;
+    font-weight: 800;
+    border: none;
 }
 [data-testid="stVerticalBlock"] {
     gap: 0.25rem;
@@ -76,17 +99,15 @@ h1, h2, h3 {
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- Header ----------
 st.markdown(
     '<div class="main-title">📊 AI Prompt-Based Dashboard Generator</div>',
     unsafe_allow_html=True
 )
 st.markdown(
-    '<div class="sub-title">Upload data, write one prompt, and generate a complete AI dashboard.</div>',
+    '<div class="sub-title">Upload data, write one prompt, and generate a colorful AI dashboard.</div>',
     unsafe_allow_html=True
 )
 
-# ---------- Sidebar ----------
 with st.sidebar:
     st.header("⚙️ Setup")
 
@@ -101,7 +122,6 @@ with st.sidebar:
         type=["csv", "xlsx"]
     )
 
-# ---------- Checks ----------
 if not api_key:
     st.warning("Paste your OpenAI API key in the sidebar.")
     st.stop()
@@ -112,7 +132,6 @@ if uploaded_file is None:
 
 client = OpenAI(api_key=api_key)
 
-# ---------- Load Data ----------
 try:
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
@@ -136,10 +155,9 @@ for col in df.columns:
     except:
         pass
 
-# ---------- Prompt ----------
 user_prompt = st.text_area(
     "💬 Dashboard Prompt",
-    placeholder="Example: Create a CEO dashboard with KPIs, sales trends, product performance, regional analysis, and recommendations.",
+    placeholder="Example: Create a colorful CEO dashboard with KPIs, trends, regional analysis, product performance, and recommendations.",
     height=60
 )
 
@@ -152,7 +170,6 @@ if not user_prompt.strip():
     st.warning("Write a dashboard prompt first.")
     st.stop()
 
-# ---------- Data Summary ----------
 summary = {
     "columns": list(df.columns),
     "rows": int(df.shape[0]),
@@ -207,21 +224,21 @@ JSON format:
 Rules:
 - Use only dataset columns.
 - Create exactly 4 KPI cards.
-- Create exactly 4 charts.
+- Create exactly 4 colorful charts.
+- Use categorical columns for color where possible.
 - Keep dashboard suitable for one screen.
 - Use map only if latitude and longitude exist.
 - Interpretation must be short.
 - Do not include markdown.
 """
 
-# ---------- AI Plan ----------
 try:
     response = client.chat.completions.create(
         model="gpt-4.1-mini",
         messages=[
             {
                 "role": "system",
-                "content": "You generate compact BI dashboard JSON only."
+                "content": "You generate compact colorful BI dashboard JSON only."
             },
             {
                 "role": "user",
@@ -239,7 +256,7 @@ except Exception as e:
     st.error(f"AI planning error: {e}")
     st.stop()
 
-# ---------- Helper Functions ----------
+
 def aggregate_data(data, x, y, aggregation):
     if aggregation == "none" or y is None:
         return data
@@ -286,10 +303,8 @@ def format_number(value):
         return str(value)
 
 
-# ---------- Dashboard Title ----------
 st.subheader(plan.get("dashboard_title", "AI Dashboard"))
 
-# ---------- KPI Cards ----------
 kpis = plan.get("kpis", [])[:4]
 
 if len(kpis) < 4:
@@ -306,18 +321,16 @@ for i, kpi in enumerate(kpis[:4]):
     title = kpi.get("title", "KPI")
     column = kpi.get("column")
     aggregation = kpi.get("aggregation", "sum")
-
     value = calculate_kpi(df, column, aggregation)
 
     with kpi_cols[i]:
         st.markdown(f"""
-        <div class="metric-card">
+        <div class="metric-card" style="background:{KPI_COLORS[i]}">
             <h2>{format_number(value)}</h2>
             <p>{title}</p>
         </div>
         """, unsafe_allow_html=True)
 
-# ---------- Charts ----------
 charts = plan.get("charts", [])[:4]
 
 for i in range(0, 4, 2):
@@ -347,49 +360,119 @@ for i in range(0, 4, 2):
         if color is not None and color not in df.columns:
             color = None
 
+        if color is None:
+            color = x if x in categorical_cols else None
+
         chart_df = aggregate_data(df, x, y, aggregation)
 
         try:
             with cols[j]:
                 if chart_type == "bar":
                     if aggregation == "count":
-                        fig = px.bar(chart_df, x=x, y="count", title=title, color=color)
+                        fig = px.bar(
+                            chart_df,
+                            x=x,
+                            y="count",
+                            title=title,
+                            color=color if color in chart_df.columns else x,
+                            color_discrete_sequence=CUSTOM_COLORS
+                        )
                     else:
-                        fig = px.bar(chart_df, x=x, y=y, title=title, color=color)
+                        fig = px.bar(
+                            chart_df,
+                            x=x,
+                            y=y,
+                            title=title,
+                            color=color if color in chart_df.columns else x,
+                            color_discrete_sequence=CUSTOM_COLORS
+                        )
 
                 elif chart_type == "line":
-                    fig = px.line(chart_df, x=x, y=y, title=title, color=color)
+                    fig = px.line(
+                        chart_df,
+                        x=x,
+                        y=y,
+                        title=title,
+                        color=color if color in chart_df.columns else None,
+                        color_discrete_sequence=CUSTOM_COLORS
+                    )
+                    fig.update_traces(line=dict(width=3), marker=dict(size=6))
 
                 elif chart_type == "scatter":
-                    fig = px.scatter(chart_df, x=x, y=y, title=title, color=color)
+                    fig = px.scatter(
+                        chart_df,
+                        x=x,
+                        y=y,
+                        title=title,
+                        color=color if color in chart_df.columns else None,
+                        color_discrete_sequence=CUSTOM_COLORS,
+                        size=y if y in chart_df.columns else None
+                    )
 
                 elif chart_type == "pie":
-                    fig = px.pie(chart_df, names=x, values=y, title=title)
+                    fig = px.pie(
+                        chart_df,
+                        names=x,
+                        values=y,
+                        title=title,
+                        color_discrete_sequence=CUSTOM_COLORS
+                    )
 
                 elif chart_type == "box":
-                    fig = px.box(df, x=x, y=y, title=title, color=color)
+                    fig = px.box(
+                        df,
+                        x=x,
+                        y=y,
+                        title=title,
+                        color=color if color in df.columns else x,
+                        color_discrete_sequence=CUSTOM_COLORS
+                    )
 
                 elif chart_type == "histogram":
-                    fig = px.histogram(df, x=x, title=title, color=color)
+                    fig = px.histogram(
+                        df,
+                        x=x,
+                        title=title,
+                        color=color if color in df.columns else x,
+                        color_discrete_sequence=CUSTOM_COLORS
+                    )
 
                 else:
-                    fig = px.bar(chart_df, x=x, y=y, title=title, color=color)
+                    fig = px.bar(
+                        chart_df,
+                        x=x,
+                        y=y,
+                        title=title,
+                        color=color if color in chart_df.columns else x,
+                        color_discrete_sequence=CUSTOM_COLORS
+                    )
 
                 fig.update_layout(
                     template="plotly_white",
                     height=220,
                     title_font_size=13,
+                    title_x=0.03,
                     margin=dict(l=10, r=10, t=35, b=10),
                     font=dict(size=9),
-                    showlegend=True
+                    paper_bgcolor="white",
+                    plot_bgcolor="white",
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1
+                    )
                 )
+
+                fig.update_xaxes(showgrid=False)
+                fig.update_yaxes(gridcolor="#E5E7EB")
 
                 st.plotly_chart(fig, use_container_width=True)
 
         except Exception:
             st.warning(f"Could not create chart: {title}")
 
-# ---------- Optional Map ----------
 map_plan = plan.get("map", {})
 
 if map_plan.get("create_map") is True:
@@ -406,6 +489,7 @@ if map_plan.get("create_map") is True:
                 lon=lon,
                 size=size if size in df.columns else None,
                 color=color if color in df.columns else None,
+                color_discrete_sequence=CUSTOM_COLORS,
                 zoom=3,
                 height=220,
                 title=map_plan.get("title", "Map")
@@ -422,7 +506,6 @@ if map_plan.get("create_map") is True:
         except Exception:
             pass
 
-# ---------- Interpretation ----------
 interpretation = plan.get("interpretation", "")
 
 if interpretation:
