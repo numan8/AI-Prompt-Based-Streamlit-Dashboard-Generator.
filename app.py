@@ -25,68 +25,71 @@ KPI_COLORS = [
 st.markdown("""
 <style>
 .stApp {
-    background: linear-gradient(135deg, #EEF2FF 0%, #FDF2F8 50%, #ECFEFF 100%);
+    background: linear-gradient(135deg, #EEF2FF 0%, #FFF7ED 45%, #ECFEFF 100%);
 }
 .block-container {
-    padding-top: 0.3rem;
-    padding-bottom: 0.2rem;
-    padding-left: 0.8rem;
-    padding-right: 0.8rem;
+    padding-top: 0.8rem;
+    padding-bottom: 1rem;
+    padding-left: 1.6rem;
+    padding-right: 1.6rem;
 }
 .main-title {
-    font-size: 22px;
+    font-size: 28px;
     font-weight: 900;
     color: #111827;
 }
 .sub-title {
-    font-size: 11px;
+    font-size: 13px;
     color: #4B5563;
+    margin-bottom: 10px;
 }
 .metric-card {
     color: white;
-    padding: 7px;
-    border-radius: 13px;
+    padding: 18px;
+    border-radius: 18px;
     text-align: center;
-    box-shadow: 0px 4px 14px rgba(0,0,0,0.18);
+    box-shadow: 0px 6px 20px rgba(0,0,0,0.18);
 }
 .metric-card h2 {
-    font-size: 18px;
+    font-size: 26px;
     margin: 0;
 }
 .metric-card p {
-    font-size: 10px;
+    font-size: 13px;
     margin: 0;
 }
 .insight-box {
     background: white;
-    padding: 8px;
-    border-radius: 12px;
-    border-left: 5px solid #7C3AED;
-    font-size: 11px;
-    box-shadow: 0px 3px 12px rgba(0,0,0,0.10);
+    padding: 18px;
+    border-radius: 18px;
+    border-left: 6px solid #7C3AED;
+    font-size: 14px;
+    line-height: 1.6;
+    box-shadow: 0px 4px 18px rgba(0,0,0,0.10);
 }
 h1, h2, h3 {
-    font-size: 14px !important;
-    margin-top: 0.1rem !important;
-    margin-bottom: 0.2rem !important;
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.6rem !important;
 }
 .stTextArea textarea {
-    min-height: 55px !important;
-    border-radius: 12px;
+    min-height: 90px !important;
+    border-radius: 16px;
+    font-size: 15px;
 }
 .stButton > button {
-    height: 32px;
+    height: 48px;
     background: linear-gradient(135deg, #2563EB, #EC4899);
     color: white;
-    border-radius: 10px;
+    border-radius: 14px;
     font-weight: 800;
     border: none;
+    font-size: 16px;
 }
 [data-testid="stVerticalBlock"] {
-    gap: 0.22rem;
+    gap: 0.9rem;
 }
 [data-testid="stHorizontalBlock"] {
-    gap: 0.45rem;
+    gap: 1rem;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -97,15 +100,12 @@ def load_file(uploaded_file):
         data = pd.read_csv(uploaded_file)
     else:
         preview = pd.read_excel(uploaded_file, sheet_name=0, header=None)
-
         header_row = None
         important_cols = ["Net_Sales", "Latitude", "Longitude", "City", "Province"]
 
         for i in range(min(15, len(preview))):
             row_values = preview.iloc[i].astype(str).str.strip().tolist()
-
             match_count = sum(col in row_values for col in important_cols)
-
             if match_count >= 2:
                 header_row = i
                 break
@@ -120,11 +120,10 @@ def load_file(uploaded_file):
 
     for col in data.columns:
         if data[col].dtype == "object":
-            converted = pd.to_numeric(
+            data[col] = pd.to_numeric(
                 data[col].astype(str).str.replace(",", "").str.replace("%", ""),
                 errors="ignore"
             )
-            data[col] = converted
 
     return data
 
@@ -197,6 +196,30 @@ def format_number(value):
         return str(value)
 
 
+def style_fig(fig, height=360):
+    fig.update_layout(
+        template="plotly_white",
+        height=height,
+        title_font_size=18,
+        title_x=0.03,
+        margin=dict(l=25, r=25, t=60, b=35),
+        font=dict(size=12),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=10)
+        )
+    )
+    fig.update_xaxes(showgrid=False, tickfont=dict(size=10))
+    fig.update_yaxes(gridcolor="#E5E7EB", tickfont=dict(size=10))
+    return fig
+
+
 def create_default_charts(df):
     charts = []
 
@@ -208,7 +231,6 @@ def create_default_charts(df):
     category = find_col(df, ["Category", "Product_Category"])
     segment = find_col(df, ["Customer_Segment", "Segment"])
     channel = find_col(df, ["Sales_Channel", "Channel"])
-    target = find_col(df, ["Target_Achievement_Percent", "Target_Achievement"])
 
     if province and net_sales:
         charts.append({"title": "Sales by Province", "type": "bar", "x": province, "y": net_sales, "color": province, "aggregation": "sum"})
@@ -223,63 +245,158 @@ def create_default_charts(df):
         charts.append({"title": "Sales by Category", "type": "pie", "x": category, "y": net_sales, "color": category, "aggregation": "sum"})
 
     if segment and net_sales:
-        charts.append({"title": "Sales by Customer Segment", "type": "bar", "x": segment, "y": net_sales, "color": segment, "aggregation": "sum"})
+        charts.append({"title": "Sales by Segment", "type": "bar", "x": segment, "y": net_sales, "color": segment, "aggregation": "sum"})
 
     if channel and net_sales:
         charts.append({"title": "Sales by Channel", "type": "pie", "x": channel, "y": net_sales, "color": channel, "aggregation": "sum"})
 
-    if target and province:
-        charts.append({"title": "Target Achievement by Province", "type": "bar", "x": province, "y": target, "color": province, "aggregation": "mean"})
-
     return charts[:6]
 
 
-def style_fig(fig, height=180):
-    fig.update_layout(
-        template="plotly_white",
-        height=height,
-        title_font_size=12,
-        title_x=0.03,
-        margin=dict(l=8, r=8, t=32, b=8),
-        font=dict(size=8),
-        paper_bgcolor="white",
-        plot_bgcolor="white",
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            font=dict(size=7)
+def create_chart(df, chart, categorical_cols, height=360):
+    title = chart.get("title", "Chart")
+    chart_type = chart.get("type", "bar")
+    x = chart.get("x")
+    y = chart.get("y")
+    color = chart.get("color")
+    aggregation = chart.get("aggregation", "none")
+
+    if x not in df.columns:
+        return None
+
+    if y is not None and y not in df.columns:
+        y = None
+
+    if color is not None and color not in df.columns:
+        color = None
+
+    if color is None:
+        color = x if x in categorical_cols else None
+
+    chart_df = aggregate_data(df, x, y, aggregation)
+
+    if chart_type == "bar":
+        y_col = "count" if aggregation == "count" else y
+        fig = px.bar(
+            chart_df,
+            x=x,
+            y=y_col,
+            title=title,
+            color=color if color in chart_df.columns else x,
+            color_discrete_sequence=CUSTOM_COLORS
         )
+
+    elif chart_type == "line":
+        fig = px.line(
+            chart_df,
+            x=x,
+            y=y,
+            title=title,
+            color=color if color in chart_df.columns else None,
+            color_discrete_sequence=CUSTOM_COLORS
+        )
+        fig.update_traces(line=dict(width=4), marker=dict(size=7))
+
+    elif chart_type == "scatter":
+        fig = px.scatter(
+            chart_df,
+            x=x,
+            y=y,
+            title=title,
+            color=color if color in chart_df.columns else None,
+            color_discrete_sequence=CUSTOM_COLORS,
+            size=y if y in chart_df.columns else None
+        )
+
+    elif chart_type == "pie":
+        fig = px.pie(
+            chart_df,
+            names=x,
+            values=y,
+            title=title,
+            color_discrete_sequence=CUSTOM_COLORS
+        )
+
+    elif chart_type == "box":
+        fig = px.box(
+            df,
+            x=x,
+            y=y,
+            title=title,
+            color=color if color in df.columns else x,
+            color_discrete_sequence=CUSTOM_COLORS
+        )
+
+    elif chart_type == "histogram":
+        fig = px.histogram(
+            df,
+            x=x,
+            title=title,
+            color=color if color in df.columns else x,
+            color_discrete_sequence=CUSTOM_COLORS
+        )
+
+    else:
+        fig = px.bar(
+            chart_df,
+            x=x,
+            y=y,
+            title=title,
+            color=color if color in chart_df.columns else x,
+            color_discrete_sequence=CUSTOM_COLORS
+        )
+
+    return style_fig(fig, height=height)
+
+
+def create_map(df, height=430):
+    lat_col = find_col(df, ["Latitude", "Lat"])
+    lon_col = find_col(df, ["Longitude", "Lon", "Lng"])
+    sales_col = find_col(df, ["Net_Sales", "Sales", "Revenue", "Amount"])
+    city_col = find_col(df, ["City", "Location"])
+    province_col = find_col(df, ["Province", "State", "Region"])
+    profit_col = find_col(df, ["Profit", "Net_Profit"])
+
+    if not lat_col or not lon_col:
+        return None
+
+    map_hover = [
+        c for c in [city_col, province_col, sales_col, profit_col]
+        if c in df.columns
+    ]
+
+    fig_map = px.scatter_mapbox(
+        df,
+        lat=lat_col,
+        lon=lon_col,
+        size=sales_col if sales_col in df.columns else None,
+        color=sales_col if sales_col in df.columns else province_col,
+        hover_name=city_col if city_col in df.columns else None,
+        hover_data=map_hover,
+        color_continuous_scale="Turbo",
+        zoom=4,
+        height=height,
+        title="Sales Map"
     )
-    fig.update_xaxes(showgrid=False, tickfont=dict(size=7))
-    fig.update_yaxes(gridcolor="#E5E7EB", tickfont=dict(size=7))
-    return fig
+
+    fig_map.update_layout(
+        mapbox_style="open-street-map",
+        margin=dict(l=0, r=0, t=50, b=0),
+        font=dict(size=12),
+        paper_bgcolor="white"
+    )
+
+    return fig_map
 
 
-st.markdown(
-    '<div class="main-title">📊 AI Prompt-Based Dashboard Generator</div>',
-    unsafe_allow_html=True
-)
-st.markdown(
-    '<div class="sub-title">Upload data, write one prompt, and generate map, KPIs, charts, and insights.</div>',
-    unsafe_allow_html=True
-)
+# Header
+st.markdown('<div class="main-title">📊 AI Prompt-Based Dashboard Generator</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Generate either one chart or a full dashboard from a single prompt.</div>', unsafe_allow_html=True)
 
 with st.sidebar:
     st.header("⚙️ Setup")
-
-    api_key = st.text_input(
-        "OpenAI API Key",
-        type="password",
-        placeholder="Paste your API key"
-    )
-
-    uploaded_file = st.file_uploader(
-        "Upload CSV or Excel file",
-        type=["csv", "xlsx"]
-    )
+    api_key = st.text_input("OpenAI API Key", type="password", placeholder="Paste your API key")
+    uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
 
 if not api_key:
     st.warning("Paste your OpenAI API key in the sidebar.")
@@ -313,17 +430,17 @@ for col in df.columns:
 
 user_prompt = st.text_area(
     "💬 Dashboard Prompt",
-    placeholder="Create a Pakistan sales dashboard with map, province analysis, city sales, product performance, profit, customer segments, and recommendations.",
-    height=55
+    placeholder="Examples: Create one map of Pakistan by Net Sales OR Create complete sales dashboard with map, KPIs, charts and recommendations.",
+    height=90
 )
 
-generate = st.button("🚀 Generate Dashboard", use_container_width=True)
+generate = st.button("🚀 Generate", use_container_width=True)
 
 if not generate:
     st.stop()
 
 if not user_prompt.strip():
-    st.warning("Write a dashboard prompt first.")
+    st.warning("Write a prompt first.")
     st.stop()
 
 summary = {
@@ -348,6 +465,7 @@ Return ONLY valid JSON.
 
 JSON format:
 {{
+  "mode": "single_plot | dashboard",
   "dashboard_title": "short title",
   "kpis": [
     {{
@@ -359,30 +477,24 @@ JSON format:
   "charts": [
     {{
       "title": "chart title",
-      "type": "bar | line | scatter | pie | box | histogram",
-      "x": "column name",
+      "type": "bar | line | scatter | pie | box | histogram | map",
+      "x": "column name or null",
       "y": "column name or null",
       "color": "column name or null",
       "aggregation": "sum | mean | count | none"
     }}
   ],
-  "interpretation": "very short executive interpretation and recommendation"
+  "interpretation": "short interpretation"
 }}
 
 Rules:
+- If user asks for one chart, one plot, single plot, only map, only chart, return mode = single_plot and only one chart.
+- If user asks for full dashboard, complete dashboard, executive dashboard, return mode = dashboard.
+- If user asks map and Latitude/Longitude exist, use chart type = map.
 - Use only dataset columns.
-- Create exactly 4 KPI cards.
-- Create exactly 6 colorful charts.
-- If Province exists, include province analysis.
-- If City exists, include city analysis.
-- If Product exists, include product analysis.
-- If Category exists, include category analysis.
-- If Customer_Segment exists, include customer segment analysis.
-- If Sales_Channel exists, include sales channel analysis.
-- If Profit exists, include profitability analysis.
-- If Target_Achievement_Percent exists, include target achievement analysis.
+- For dashboard mode, create 4 KPI cards and 4 to 6 charts.
+- For single_plot mode, create only one large visualization and one short interpretation.
 - If Net_Sales exists, prioritize it for sales analysis.
-- Keep interpretation short.
 - Do not include markdown.
 """
 
@@ -390,14 +502,8 @@ try:
     response = client.chat.completions.create(
         model="gpt-4.1-mini",
         messages=[
-            {
-                "role": "system",
-                "content": "You generate compact colorful BI dashboard JSON only."
-            },
-            {
-                "role": "user",
-                "content": dashboard_prompt
-            }
+            {"role": "system", "content": "You generate BI dashboard JSON only."},
+            {"role": "user", "content": dashboard_prompt}
         ],
         temperature=0.2
     )
@@ -410,9 +516,38 @@ except Exception as e:
     st.error(f"AI planning error: {e}")
     st.stop()
 
-st.subheader(plan.get("dashboard_title", "AI Sales Dashboard"))
+mode = plan.get("mode", "dashboard")
+charts = plan.get("charts", [])
 
-# KPI cards
+st.subheader(plan.get("dashboard_title", "AI Dashboard"))
+
+# Single plot mode
+if mode == "single_plot":
+    chart = charts[0] if charts else None
+
+    if chart and chart.get("type") == "map":
+        fig = create_map(df, height=620)
+    elif chart:
+        fig = create_chart(df, chart, categorical_cols, height=620)
+    else:
+        fig = create_map(df, height=620)
+
+    if fig:
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("Could not create the requested plot.")
+
+    interpretation = plan.get("interpretation", "")
+    if interpretation:
+        st.markdown(f"""
+        <div class="insight-box">
+        <b>AI Interpretation:</b> {interpretation}
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.stop()
+
+# Dashboard mode
 kpis = plan.get("kpis", [])[:4]
 
 fallback_kpis = [
@@ -442,166 +577,34 @@ for i, kpi in enumerate(kpis[:4]):
         </div>
         """, unsafe_allow_html=True)
 
-# Automatic map
-lat_col = find_col(df, ["Latitude", "Lat"])
-lon_col = find_col(df, ["Longitude", "Lon", "Lng"])
-sales_col = find_col(df, ["Net_Sales", "Sales", "Revenue", "Amount"])
-city_col = find_col(df, ["City", "Location"])
-province_col = find_col(df, ["Province", "State", "Region"])
-profit_col = find_col(df, ["Profit", "Net_Profit"])
+fig_map = create_map(df, height=420)
+if fig_map:
+    st.plotly_chart(fig_map, use_container_width=True)
 
-if lat_col and lon_col:
-    try:
-        map_hover = [
-            c for c in [city_col, province_col, sales_col, profit_col]
-            if c in df.columns
-        ]
-
-        fig_map = px.scatter_mapbox(
-            df,
-            lat=lat_col,
-            lon=lon_col,
-            size=sales_col if sales_col in df.columns else None,
-            color=sales_col if sales_col in df.columns else province_col,
-            hover_name=city_col if city_col in df.columns else None,
-            hover_data=map_hover,
-            color_continuous_scale="Turbo",
-            zoom=4,
-            height=230,
-            title="Pakistan Sales Map"
-        )
-
-        fig_map.update_layout(
-            mapbox_style="open-street-map",
-            margin=dict(l=0, r=0, t=30, b=0),
-            font=dict(size=8),
-            paper_bgcolor="white"
-        )
-
-        st.plotly_chart(fig_map, use_container_width=True)
-
-    except Exception as e:
-        st.warning(f"Map could not be created: {e}")
-
-# Charts
-charts = plan.get("charts", [])[:6]
+charts = [c for c in charts if c.get("type") != "map"][:6]
 
 if len(charts) < 6:
-    fallback_charts = create_default_charts(df)
-    for c in fallback_charts:
+    for c in create_default_charts(df):
         if len(charts) < 6:
             charts.append(c)
 
-for i in range(0, 6, 3):
-    cols = st.columns(3)
+for i in range(0, len(charts), 2):
+    cols = st.columns(2)
 
-    for j in range(3):
+    for j in range(2):
         chart_index = i + j
-
         if chart_index >= len(charts):
             continue
 
         chart = charts[chart_index]
 
-        title = chart.get("title", "Chart")
-        chart_type = chart.get("type", "bar")
-        x = chart.get("x")
-        y = chart.get("y")
-        color = chart.get("color")
-        aggregation = chart.get("aggregation", "none")
-
-        if x not in df.columns:
-            continue
-
-        if y is not None and y not in df.columns:
-            y = None
-
-        if color is not None and color not in df.columns:
-            color = None
-
-        if color is None:
-            color = x if x in categorical_cols else None
-
-        chart_df = aggregate_data(df, x, y, aggregation)
-
         try:
-            with cols[j]:
-                if chart_type == "bar":
-                    y_col = "count" if aggregation == "count" else y
-                    fig = px.bar(
-                        chart_df,
-                        x=x,
-                        y=y_col,
-                        title=title,
-                        color=color if color in chart_df.columns else x,
-                        color_discrete_sequence=CUSTOM_COLORS
-                    )
-
-                elif chart_type == "line":
-                    fig = px.line(
-                        chart_df,
-                        x=x,
-                        y=y,
-                        title=title,
-                        color=color if color in chart_df.columns else None,
-                        color_discrete_sequence=CUSTOM_COLORS
-                    )
-                    fig.update_traces(line=dict(width=3), marker=dict(size=5))
-
-                elif chart_type == "scatter":
-                    fig = px.scatter(
-                        chart_df,
-                        x=x,
-                        y=y,
-                        title=title,
-                        color=color if color in chart_df.columns else None,
-                        color_discrete_sequence=CUSTOM_COLORS,
-                        size=y if y in chart_df.columns else None
-                    )
-
-                elif chart_type == "pie":
-                    fig = px.pie(
-                        chart_df,
-                        names=x,
-                        values=y,
-                        title=title,
-                        color_discrete_sequence=CUSTOM_COLORS
-                    )
-
-                elif chart_type == "box":
-                    fig = px.box(
-                        df,
-                        x=x,
-                        y=y,
-                        title=title,
-                        color=color if color in df.columns else x,
-                        color_discrete_sequence=CUSTOM_COLORS
-                    )
-
-                elif chart_type == "histogram":
-                    fig = px.histogram(
-                        df,
-                        x=x,
-                        title=title,
-                        color=color if color in df.columns else x,
-                        color_discrete_sequence=CUSTOM_COLORS
-                    )
-
-                else:
-                    fig = px.bar(
-                        chart_df,
-                        x=x,
-                        y=y,
-                        title=title,
-                        color=color if color in chart_df.columns else x,
-                        color_discrete_sequence=CUSTOM_COLORS
-                    )
-
-                fig = style_fig(fig, height=180)
-                st.plotly_chart(fig, use_container_width=True)
-
-        except Exception as e:
-            st.warning(f"Could not create chart: {title}")
+            fig = create_chart(df, chart, categorical_cols, height=360)
+            if fig:
+                with cols[j]:
+                    st.plotly_chart(fig, use_container_width=True)
+        except Exception:
+            st.warning(f"Could not create chart: {chart.get('title', 'Chart')}")
 
 interpretation = plan.get("interpretation", "")
 
