@@ -1,3 +1,4 @@
+import json
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -9,12 +10,11 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------- Custom CSS ----------
 st.markdown("""
 <style>
 .main-title {
     font-size: 42px;
-    font-weight: 800;
+    font-weight: 900;
     color: #111827;
 }
 .sub-title {
@@ -29,6 +29,13 @@ st.markdown("""
     text-align: center;
     box-shadow: 0px 4px 18px rgba(0,0,0,0.12);
 }
+.insight-box {
+    background: #EEF2FF;
+    padding: 22px;
+    border-radius: 18px;
+    border-left: 6px solid #4F46E5;
+    font-size: 16px;
+}
 .stButton > button {
     background-color: #4F46E5;
     color: white;
@@ -39,46 +46,42 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- Header ----------
-st.markdown('<div class="main-title">📊 AI Prompt-Based Dashboard Generator</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="sub-title">Upload your data, enter a prompt, generate charts, and get AI interpretation.</div>',
+    '<div class="main-title">📊 AI Prompt-Based Dashboard Generator</div>',
+    unsafe_allow_html=True
+)
+st.markdown(
+    '<div class="sub-title">Upload data, write one prompt, and AI will generate KPIs, charts, maps, and interpretation.</div>',
     unsafe_allow_html=True
 )
 
 st.divider()
 
-# ---------- Sidebar ----------
+# ---------------- Sidebar: only setup ----------------
 with st.sidebar:
-    st.header("⚙️ Settings")
+    st.header("⚙️ Setup")
 
     api_key = st.text_input(
-        "🔑 Enter OpenAI API Key",
+        "OpenAI API Key",
         type="password",
-        placeholder="sk-..."
+        placeholder="Paste your API key"
     )
 
     uploaded_file = st.file_uploader(
-        "📁 Upload CSV or Excel File",
+        "Upload CSV or Excel file",
         type=["csv", "xlsx"]
     )
 
-    chart_type = st.selectbox(
-        "📊 Select Chart Type",
-        ["Bar Chart", "Line Chart", "Scatter Plot", "Pie Chart", "Box Plot"]
-    )
-
-# ---------- API Key Check ----------
+# ---------------- Check API and Data ----------------
 if not api_key:
-    st.warning("Please enter your OpenAI API key in the sidebar.")
+    st.warning("Please paste your OpenAI API key in the sidebar.")
+    st.stop()
+
+if uploaded_file is None:
+    st.info("Please upload your CSV or Excel file in the sidebar.")
     st.stop()
 
 client = OpenAI(api_key=api_key)
-
-# ---------- Load Data ----------
-if uploaded_file is None:
-    st.info("Please upload a CSV or Excel file from the sidebar.")
-    st.stop()
 
 try:
     if uploaded_file.name.endswith(".csv"):
@@ -89,196 +92,315 @@ except Exception as e:
     st.error(f"File loading error: {e}")
     st.stop()
 
-# ---------- Data Preview ----------
-st.subheader("📁 Data Preview")
-st.dataframe(df.head(10), use_container_width=True)
+# Clean column names
+df.columns = [str(col).strip() for col in df.columns]
 
 numeric_cols = df.select_dtypes(include="number").columns.tolist()
-all_cols = df.columns.tolist()
+categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
+date_cols = []
 
-if len(all_cols) == 0:
-    st.error("No columns found in the uploaded file.")
+for col in df.columns:
+    try:
+        temp = pd.to_datetime(df[col], errors="coerce")
+        if temp.notna().sum() > len(df) * 0.5:
+            date_cols.append(col)
+    except:
+        pass
+
+# ---------------- Prompt-only interface ----------------
+st.subheader("💬 Write Your Dashboard Prompt")
+
+user_prompt = st.text_area(
+    "Describe the dashboard you want",
+    placeholder="Example: Create an executive sales dashboard with KPIs, regional performance, product analysis, trends, map if possible, and business recommendations.",
+    height=130
+)
+
+generate = st.button("🚀 Generate AI Dashboard", use_container_width=True)
+
+if not generate:
+    st.info("Enter a prompt and click Generate AI Dashboard.")
     st.stop()
 
-# ---------- KPI Cards ----------
-col1, col2, col3, col4 = st.columns(4)
+if not user_prompt.strip():
+    st.warning("Please write a dashboard prompt first.")
+    st.stop()
 
-with col1:
-    st.markdown(f"""
-    <div class="metric-card">
-        <h2>{df.shape[0]}</h2>
-        <p>Total Rows</p>
-    </div>
-    """, unsafe_allow_html=True)
+# ---------------- Dataset Summary ----------------
+summary = {
+    "columns": list(df.columns),
+    "rows": int(df.shape[0]),
+    "numeric_columns": numeric_cols,
+    "categorical_columns": categorical_cols,
+    "date_columns": date_cols,
+    "sample_data": df.head(10).to_dict(orient="records")
+}
 
-with col2:
-    st.markdown(f"""
-    <div class="metric-card">
-        <h2>{df.shape[1]}</h2>
-        <p>Total Columns</p>
-    </div>
-    """, unsafe_allow_html=True)
+dashboard_prompt = f"""
+You are an expert BI dashboard designer.
 
-with col3:
-    st.markdown(f"""
-    <div class="metric-card">
-        <h2>{len(numeric_cols)}</h2>
-        <p>Numeric Columns</p>
-    </div>
-    """, unsafe_allow_html=True)
+User request:
+{user_prompt}
 
-with col4:
-    st.markdown(f"""
-    <div class="metric-card">
-        <h2>{df.isnull().sum().sum()}</h2>
-        <p>Missing Values</p>
-    </div>
-    """, unsafe_allow_html=True)
+Dataset summary:
+{json.dumps(summary, default=str)}
+
+Your task:
+Create a dashboard plan using only available dataset columns.
+
+Return ONLY valid JSON.
+
+JSON format:
+{{
+  "dashboard_title": "short title",
+  "kpis": [
+    {{
+      "title": "KPI title",
+      "column": "numeric column name",
+      "aggregation": "sum | mean | count | max | min"
+    }}
+  ],
+  "charts": [
+    {{
+      "title": "chart title",
+      "type": "bar | line | scatter | pie | box | histogram",
+      "x": "column name",
+      "y": "column name or null",
+      "color": "column name or null",
+      "aggregation": "sum | mean | count | none"
+    }}
+  ],
+  "map": {{
+    "create_map": true or false,
+    "lat": "latitude column or null",
+    "lon": "longitude column or null",
+    "size": "numeric column or null",
+    "color": "column or null",
+    "title": "map title"
+  }},
+  "interpretation": "short executive interpretation with insights and recommendations"
+}}
+
+Rules:
+- Use only columns that exist in the dataset.
+- Create 4 to 6 useful charts.
+- Use map only if latitude and longitude columns exist.
+- Prefer business-friendly charts.
+- Do not include markdown.
+- Do not include explanation outside JSON.
+"""
+
+# ---------------- AI dashboard plan ----------------
+try:
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a BI dashboard generator. Return only valid JSON."
+            },
+            {
+                "role": "user",
+                "content": dashboard_prompt
+            }
+        ],
+        temperature=0.2
+    )
+
+    raw_json = response.choices[0].message.content.strip()
+    raw_json = raw_json.replace("```json", "").replace("```", "").strip()
+    plan = json.loads(raw_json)
+
+except Exception as e:
+    st.error(f"AI dashboard planning error: {e}")
+    st.stop()
+
+# ---------------- Helper functions ----------------
+def aggregate_data(data, x, y, aggregation):
+    if aggregation == "none" or y is None:
+        return data
+
+    if aggregation == "sum":
+        return data.groupby(x, as_index=False)[y].sum()
+
+    if aggregation == "mean":
+        return data.groupby(x, as_index=False)[y].mean()
+
+    if aggregation == "count":
+        return data.groupby(x, as_index=False).size().rename(columns={"size": "count"})
+
+    return data
+
+
+def calculate_kpi(data, column, aggregation):
+    if aggregation == "sum":
+        return data[column].sum()
+    elif aggregation == "mean":
+        return data[column].mean()
+    elif aggregation == "count":
+        return data[column].count()
+    elif aggregation == "max":
+        return data[column].max()
+    elif aggregation == "min":
+        return data[column].min()
+    else:
+        return data[column].sum()
+
+
+def format_number(value):
+    try:
+        if abs(value) >= 1_000_000:
+            return f"{value/1_000_000:.2f}M"
+        elif abs(value) >= 1_000:
+            return f"{value/1_000:.2f}K"
+        else:
+            return f"{value:,.2f}"
+    except:
+        return str(value)
+
+
+# ---------------- Render Dashboard ----------------
+st.subheader(plan.get("dashboard_title", "AI Generated Dashboard"))
+
+# KPI Cards
+kpis = plan.get("kpis", [])[:4]
+
+if kpis:
+    kpi_cols = st.columns(len(kpis))
+
+    for i, kpi in enumerate(kpis):
+        title = kpi.get("title", "KPI")
+        column = kpi.get("column")
+        aggregation = kpi.get("aggregation", "sum")
+
+        if column in df.columns:
+            value = calculate_kpi(df, column, aggregation)
+
+            with kpi_cols[i]:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <h2>{format_number(value)}</h2>
+                    <p>{title}</p>
+                </div>
+                """, unsafe_allow_html=True)
 
 st.divider()
 
-# ---------- Prompt Section ----------
-st.subheader("💬 Dashboard Prompt")
+# Charts
+charts = plan.get("charts", [])
 
-user_prompt = st.text_area(
-    "Write what kind of dashboard you want",
-    placeholder="Example: Create a sales dashboard by region and explain important trends.",
-    height=120
-)
+for i in range(0, len(charts), 2):
+    cols = st.columns(2)
 
-col_x, col_y = st.columns(2)
+    for j in range(2):
+        if i + j >= len(charts):
+            break
 
-with col_x:
-    x_axis = st.selectbox("Select X-axis", all_cols)
+        chart = charts[i + j]
 
-with col_y:
-    if numeric_cols:
-        y_axis = st.selectbox("Select Y-axis", numeric_cols)
-    else:
-        y_axis = st.selectbox("Select Y-axis", all_cols)
+        title = chart.get("title", "Chart")
+        chart_type = chart.get("type", "bar")
+        x = chart.get("x")
+        y = chart.get("y")
+        color = chart.get("color")
+        aggregation = chart.get("aggregation", "none")
 
-# ---------- Generate Dashboard ----------
-if st.button("🚀 Generate Dashboard", use_container_width=True):
+        if x not in df.columns:
+            continue
 
-    if not user_prompt.strip():
-        st.warning("Please write a dashboard prompt first.")
-        st.stop()
+        if y is not None and y not in df.columns:
+            y = None
 
-    st.subheader("📈 Generated Dashboard")
+        if color is not None and color not in df.columns:
+            color = None
 
-    try:
-        if chart_type == "Bar Chart":
-            fig = px.bar(
+        chart_df = aggregate_data(df, x, y, aggregation)
+
+        try:
+            with cols[j]:
+                if chart_type == "bar":
+                    if aggregation == "count":
+                        fig = px.bar(chart_df, x=x, y="count", title=title, color=color)
+                    else:
+                        fig = px.bar(chart_df, x=x, y=y, title=title, color=color)
+
+                elif chart_type == "line":
+                    fig = px.line(chart_df, x=x, y=y, title=title, color=color)
+
+                elif chart_type == "scatter":
+                    fig = px.scatter(chart_df, x=x, y=y, title=title, color=color)
+
+                elif chart_type == "pie":
+                    fig = px.pie(chart_df, names=x, values=y, title=title)
+
+                elif chart_type == "box":
+                    fig = px.box(df, x=x, y=y, title=title, color=color)
+
+                elif chart_type == "histogram":
+                    fig = px.histogram(df, x=x, title=title, color=color)
+
+                else:
+                    fig = px.bar(chart_df, x=x, y=y, title=title, color=color)
+
+                fig.update_layout(
+                    template="plotly_white",
+                    height=430,
+                    title_font_size=20,
+                    margin=dict(l=20, r=20, t=60, b=30)
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+
+        except Exception as e:
+            st.warning(f"Could not create chart: {title}")
+
+# ---------------- Map ----------------
+map_plan = plan.get("map", {})
+
+if map_plan.get("create_map") is True:
+    lat = map_plan.get("lat")
+    lon = map_plan.get("lon")
+    size = map_plan.get("size")
+    color = map_plan.get("color")
+    map_title = map_plan.get("title", "Map View")
+
+    if lat in df.columns and lon in df.columns:
+        st.subheader("🗺️ Map View")
+
+        try:
+            fig_map = px.scatter_mapbox(
                 df,
-                x=x_axis,
-                y=y_axis,
-                title=f"{y_axis} by {x_axis}"
+                lat=lat,
+                lon=lon,
+                size=size if size in df.columns else None,
+                color=color if color in df.columns else None,
+                hover_data=df.columns,
+                zoom=3,
+                height=550,
+                title=map_title
             )
 
-        elif chart_type == "Line Chart":
-            fig = px.line(
-                df,
-                x=x_axis,
-                y=y_axis,
-                title=f"{y_axis} Trend by {x_axis}"
+            fig_map.update_layout(
+                mapbox_style="open-street-map",
+                margin=dict(l=0, r=0, t=50, b=0)
             )
 
-        elif chart_type == "Scatter Plot":
-            fig = px.scatter(
-                df,
-                x=x_axis,
-                y=y_axis,
-                title=f"{y_axis} vs {x_axis}"
-            )
+            st.plotly_chart(fig_map, use_container_width=True)
 
-        elif chart_type == "Pie Chart":
-            fig = px.pie(
-                df,
-                names=x_axis,
-                values=y_axis,
-                title=f"{y_axis} Share by {x_axis}"
-            )
+        except Exception as e:
+            st.warning("Map could not be created.")
 
-        elif chart_type == "Box Plot":
-            fig = px.box(
-                df,
-                x=x_axis,
-                y=y_axis,
-                title=f"{y_axis} Distribution by {x_axis}"
-            )
+# ---------------- Interpretation ----------------
+st.subheader("🧠 AI Interpretation")
 
-        fig.update_layout(
-            template="plotly_white",
-            title_font_size=24,
-            height=550,
-            margin=dict(l=30, r=30, t=70, b=30)
-        )
+interpretation = plan.get("interpretation", "No interpretation generated.")
 
-        st.plotly_chart(fig, use_container_width=True)
+st.markdown(f"""
+<div class="insight-box">
+{interpretation}
+</div>
+""", unsafe_allow_html=True)
 
-    except Exception as e:
-        st.error(f"Chart generation error: {e}")
-        st.stop()
-
-    # ---------- AI Interpretation ----------
-    st.subheader("🧠 AI Interpretation")
-
-    sample_data = df.head(20).to_string()
-
-    ai_prompt = f"""
-You are a professional Business Intelligence analyst.
-
-User dashboard request:
-{user_prompt}
-
-Dataset columns:
-{list(df.columns)}
-
-Dataset shape:
-Rows: {df.shape[0]}
-Columns: {df.shape[1]}
-
-Sample data:
-{sample_data}
-
-Selected chart:
-{chart_type}
-
-X-axis:
-{x_axis}
-
-Y-axis:
-{y_axis}
-
-Write a short dashboard interpretation.
-
-Include:
-1. Key insight
-2. Business meaning
-3. Suggested action
-
-Keep the response clear, professional, and concise.
-"""
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are an expert BI dashboard analyst."
-                },
-                {
-                    "role": "user",
-                    "content": ai_prompt
-                }
-            ]
-        )
-
-        interpretation = response.choices[0].message.content
-        st.info(interpretation)
-
-    except Exception as e:
-        st.error(f"OpenAI error: {e}")
-else:
-    st.info("Write a prompt, select chart settings, and click Generate Dashboard.")
+# ---------------- Optional data preview hidden in expander ----------------
+with st.expander("View uploaded data"):
+    st.dataframe(df.head(50), use_container_width=True)
