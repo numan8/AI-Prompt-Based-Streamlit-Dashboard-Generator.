@@ -91,6 +91,173 @@ h1, h2, h3 {
 </style>
 """, unsafe_allow_html=True)
 
+
+def load_file(uploaded_file):
+    if uploaded_file.name.endswith(".csv"):
+        data = pd.read_csv(uploaded_file)
+    else:
+        preview = pd.read_excel(uploaded_file, sheet_name=0, header=None)
+
+        header_row = None
+        important_cols = ["Net_Sales", "Latitude", "Longitude", "City", "Province"]
+
+        for i in range(min(15, len(preview))):
+            row_values = preview.iloc[i].astype(str).str.strip().tolist()
+
+            match_count = sum(col in row_values for col in important_cols)
+
+            if match_count >= 2:
+                header_row = i
+                break
+
+        if header_row is not None:
+            data = pd.read_excel(uploaded_file, sheet_name=0, header=header_row)
+        else:
+            data = pd.read_excel(uploaded_file, sheet_name=0)
+
+    data.columns = [str(c).strip() for c in data.columns]
+    data = data.dropna(how="all")
+
+    for col in data.columns:
+        if data[col].dtype == "object":
+            converted = pd.to_numeric(
+                data[col].astype(str).str.replace(",", "").str.replace("%", ""),
+                errors="ignore"
+            )
+            data[col] = converted
+
+    return data
+
+
+def find_col(df, possible_names):
+    lower_cols = {c.lower(): c for c in df.columns}
+
+    for name in possible_names:
+        if name.lower() in lower_cols:
+            return lower_cols[name.lower()]
+
+    for col in df.columns:
+        for name in possible_names:
+            if name.lower() in col.lower():
+                return col
+
+    return None
+
+
+def aggregate_data(data, x, y, aggregation):
+    if aggregation == "none" or y is None:
+        return data
+
+    if x not in data.columns:
+        return data
+
+    if aggregation == "sum" and y in data.columns:
+        return data.groupby(x, as_index=False)[y].sum()
+
+    if aggregation == "mean" and y in data.columns:
+        return data.groupby(x, as_index=False)[y].mean()
+
+    if aggregation == "count":
+        return data.groupby(x, as_index=False).size().rename(columns={"size": "count"})
+
+    return data
+
+
+def calculate_kpi(data, column, aggregation):
+    if column is None or column not in data.columns:
+        return 0
+
+    series = pd.to_numeric(data[column], errors="coerce")
+
+    if aggregation == "sum":
+        return series.sum()
+    elif aggregation == "mean":
+        return series.mean()
+    elif aggregation == "count":
+        return series.count()
+    elif aggregation == "max":
+        return series.max()
+    elif aggregation == "min":
+        return series.min()
+    else:
+        return series.sum()
+
+
+def format_number(value):
+    try:
+        if pd.isna(value):
+            return "0"
+        if abs(value) >= 1_000_000:
+            return f"{value / 1_000_000:.1f}M"
+        elif abs(value) >= 1_000:
+            return f"{value / 1_000:.1f}K"
+        else:
+            return f"{value:,.0f}"
+    except Exception:
+        return str(value)
+
+
+def create_default_charts(df):
+    charts = []
+
+    net_sales = find_col(df, ["Net_Sales", "Sales", "Revenue", "Amount"])
+    profit = find_col(df, ["Profit", "Net_Profit"])
+    province = find_col(df, ["Province", "State", "Region"])
+    city = find_col(df, ["City", "Location"])
+    product = find_col(df, ["Product", "Item"])
+    category = find_col(df, ["Category", "Product_Category"])
+    segment = find_col(df, ["Customer_Segment", "Segment"])
+    channel = find_col(df, ["Sales_Channel", "Channel"])
+    target = find_col(df, ["Target_Achievement_Percent", "Target_Achievement"])
+
+    if province and net_sales:
+        charts.append({"title": "Sales by Province", "type": "bar", "x": province, "y": net_sales, "color": province, "aggregation": "sum"})
+
+    if city and net_sales:
+        charts.append({"title": "Sales by City", "type": "bar", "x": city, "y": net_sales, "color": city, "aggregation": "sum"})
+
+    if product and profit:
+        charts.append({"title": "Profit by Product", "type": "bar", "x": product, "y": profit, "color": product, "aggregation": "sum"})
+
+    if category and net_sales:
+        charts.append({"title": "Sales by Category", "type": "pie", "x": category, "y": net_sales, "color": category, "aggregation": "sum"})
+
+    if segment and net_sales:
+        charts.append({"title": "Sales by Customer Segment", "type": "bar", "x": segment, "y": net_sales, "color": segment, "aggregation": "sum"})
+
+    if channel and net_sales:
+        charts.append({"title": "Sales by Channel", "type": "pie", "x": channel, "y": net_sales, "color": channel, "aggregation": "sum"})
+
+    if target and province:
+        charts.append({"title": "Target Achievement by Province", "type": "bar", "x": province, "y": target, "color": province, "aggregation": "mean"})
+
+    return charts[:6]
+
+
+def style_fig(fig, height=180):
+    fig.update_layout(
+        template="plotly_white",
+        height=height,
+        title_font_size=12,
+        title_x=0.03,
+        margin=dict(l=8, r=8, t=32, b=8),
+        font=dict(size=8),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=7)
+        )
+    )
+    fig.update_xaxes(showgrid=False, tickfont=dict(size=7))
+    fig.update_yaxes(gridcolor="#E5E7EB", tickfont=dict(size=7))
+    return fig
+
+
 st.markdown(
     '<div class="main-title">📊 AI Prompt-Based Dashboard Generator</div>',
     unsafe_allow_html=True
@@ -125,15 +292,12 @@ if uploaded_file is None:
 client = OpenAI(api_key=api_key)
 
 try:
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-    else:
-        df = pd.read_excel(uploaded_file)
+    df = load_file(uploaded_file)
 except Exception as e:
     st.error(f"File loading error: {e}")
     st.stop()
 
-df.columns = [str(col).strip() for col in df.columns]
+st.sidebar.success(f"Loaded {df.shape[0]} rows and {df.shape[1]} columns")
 
 numeric_cols = df.select_dtypes(include="number").columns.tolist()
 categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
@@ -246,141 +410,21 @@ except Exception as e:
     st.error(f"AI planning error: {e}")
     st.stop()
 
-
-def find_col(possible_names):
-    lower_cols = {c.lower(): c for c in df.columns}
-    for name in possible_names:
-        if name.lower() in lower_cols:
-            return lower_cols[name.lower()]
-    return None
-
-
-def aggregate_data(data, x, y, aggregation):
-    if aggregation == "none" or y is None:
-        return data
-
-    if x not in data.columns:
-        return data
-
-    if aggregation == "sum" and y in data.columns:
-        return data.groupby(x, as_index=False)[y].sum()
-
-    if aggregation == "mean" and y in data.columns:
-        return data.groupby(x, as_index=False)[y].mean()
-
-    if aggregation == "count":
-        return data.groupby(x, as_index=False).size().rename(columns={"size": "count"})
-
-    return data
-
-
-def calculate_kpi(data, column, aggregation):
-    if column not in data.columns:
-        return 0
-
-    if aggregation == "sum":
-        return data[column].sum()
-    elif aggregation == "mean":
-        return data[column].mean()
-    elif aggregation == "count":
-        return data[column].count()
-    elif aggregation == "max":
-        return data[column].max()
-    elif aggregation == "min":
-        return data[column].min()
-    else:
-        return data[column].sum()
-
-
-def format_number(value):
-    try:
-        if abs(value) >= 1_000_000:
-            return f"{value / 1_000_000:.1f}M"
-        elif abs(value) >= 1_000:
-            return f"{value / 1_000:.1f}K"
-        else:
-            return f"{value:,.0f}"
-    except Exception:
-        return str(value)
-
-
-def create_default_charts():
-    charts = []
-
-    net_sales = find_col(["Net_Sales", "Sales", "Revenue", "Amount"])
-    profit = find_col(["Profit", "Net_Profit"])
-    province = find_col(["Province", "State", "Region"])
-    city = find_col(["City", "Location"])
-    product = find_col(["Product", "Item"])
-    category = find_col(["Category", "Product_Category"])
-    segment = find_col(["Customer_Segment", "Segment"])
-    channel = find_col(["Sales_Channel", "Channel"])
-    target = find_col(["Target_Achievement_Percent", "Target_Achievement"])
-
-    if province and net_sales:
-        charts.append({"title": "Sales by Province", "type": "bar", "x": province, "y": net_sales, "color": province, "aggregation": "sum"})
-
-    if city and net_sales:
-        charts.append({"title": "Sales by City", "type": "bar", "x": city, "y": net_sales, "color": city, "aggregation": "sum"})
-
-    if product and profit:
-        charts.append({"title": "Profit by Product", "type": "bar", "x": product, "y": profit, "color": product, "aggregation": "sum"})
-
-    if category and net_sales:
-        charts.append({"title": "Sales by Category", "type": "pie", "x": category, "y": net_sales, "color": category, "aggregation": "sum"})
-
-    if segment and net_sales:
-        charts.append({"title": "Sales by Customer Segment", "type": "bar", "x": segment, "y": net_sales, "color": segment, "aggregation": "sum"})
-
-    if channel and net_sales:
-        charts.append({"title": "Sales by Channel", "type": "pie", "x": channel, "y": net_sales, "color": channel, "aggregation": "sum"})
-
-    if target and province:
-        charts.append({"title": "Target Achievement by Province", "type": "bar", "x": province, "y": target, "color": province, "aggregation": "mean"})
-
-    return charts[:6]
-
-
-def style_fig(fig, height=190):
-    fig.update_layout(
-        template="plotly_white",
-        height=height,
-        title_font_size=12,
-        title_x=0.03,
-        margin=dict(l=8, r=8, t=32, b=8),
-        font=dict(size=8),
-        paper_bgcolor="white",
-        plot_bgcolor="white",
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            font=dict(size=7)
-        )
-    )
-    fig.update_xaxes(showgrid=False, tickfont=dict(size=7))
-    fig.update_yaxes(gridcolor="#E5E7EB", tickfont=dict(size=7))
-    return fig
-
-
 st.subheader(plan.get("dashboard_title", "AI Sales Dashboard"))
 
 # KPI cards
 kpis = plan.get("kpis", [])[:4]
 
-if len(kpis) < 4:
-    fallback_kpis = [
-        (find_col(["Net_Sales", "Sales", "Revenue", "Amount"]), "Total Sales", "sum"),
-        (find_col(["Profit", "Net_Profit"]), "Total Profit", "sum"),
-        (find_col(["Quantity", "Units"]), "Total Quantity", "sum"),
-        (find_col(["Target_Achievement_Percent"]), "Avg Target Achievement", "mean"),
-    ]
+fallback_kpis = [
+    (find_col(df, ["Net_Sales", "Sales", "Revenue", "Amount"]), "Total Sales", "sum"),
+    (find_col(df, ["Profit", "Net_Profit"]), "Total Profit", "sum"),
+    (find_col(df, ["Quantity", "Units"]), "Quantity Sold", "sum"),
+    (find_col(df, ["Target_Achievement_Percent", "Target_Achievement"]), "Target Achievement", "mean"),
+]
 
-    for col, title, agg in fallback_kpis:
-        if col and len(kpis) < 4:
-            kpis.append({"title": title, "column": col, "aggregation": agg})
+for col, title, agg in fallback_kpis:
+    if len(kpis) < 4 and col:
+        kpis.append({"title": title, "column": col, "aggregation": agg})
 
 kpi_cols = st.columns(4)
 
@@ -398,16 +442,20 @@ for i, kpi in enumerate(kpis[:4]):
         </div>
         """, unsafe_allow_html=True)
 
-# Automatic map if coordinates exist
-lat_col = find_col(["Latitude", "Lat", "latitude", "lat"])
-lon_col = find_col(["Longitude", "Lon", "Lng", "longitude", "lon", "lng"])
-sales_col = find_col(["Net_Sales", "Sales", "Revenue", "Amount"])
-city_col = find_col(["City", "Location"])
-province_col = find_col(["Province", "State", "Region"])
+# Automatic map
+lat_col = find_col(df, ["Latitude", "Lat"])
+lon_col = find_col(df, ["Longitude", "Lon", "Lng"])
+sales_col = find_col(df, ["Net_Sales", "Sales", "Revenue", "Amount"])
+city_col = find_col(df, ["City", "Location"])
+province_col = find_col(df, ["Province", "State", "Region"])
+profit_col = find_col(df, ["Profit", "Net_Profit"])
 
 if lat_col and lon_col:
     try:
-        map_hover = [c for c in [city_col, province_col, sales_col, "Profit", "Product", "Category"] if c in df.columns]
+        map_hover = [
+            c for c in [city_col, province_col, sales_col, profit_col]
+            if c in df.columns
+        ]
 
         fig_map = px.scatter_mapbox(
             df,
@@ -432,14 +480,14 @@ if lat_col and lon_col:
 
         st.plotly_chart(fig_map, use_container_width=True)
 
-    except Exception:
-        pass
+    except Exception as e:
+        st.warning(f"Map could not be created: {e}")
 
 # Charts
 charts = plan.get("charts", [])[:6]
 
 if len(charts) < 6:
-    fallback_charts = create_default_charts()
+    fallback_charts = create_default_charts(df)
     for c in fallback_charts:
         if len(charts) < 6:
             charts.append(c)
@@ -552,7 +600,7 @@ for i in range(0, 6, 3):
                 fig = style_fig(fig, height=180)
                 st.plotly_chart(fig, use_container_width=True)
 
-        except Exception:
+        except Exception as e:
             st.warning(f"Could not create chart: {title}")
 
 interpretation = plan.get("interpretation", "")
